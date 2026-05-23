@@ -1,4 +1,4 @@
-from llm.schemas import EmployeeMetrics
+from schemas import EmployeeMetrics
 
 
 CURRENT_BURNOUT_SYSTEM_PROMPT = """
@@ -27,6 +27,8 @@ Rules:
 - Do not invent missing metrics outside reasonable forecast interpolation.
 - horizon_days must match the requested forecast period.
 - trend must be one of: improving, stable, declining, volatile.
+- forecast_points must cover the full requested time horizon.
+- forecast_points must be sorted by day in ascending order.
 - forecast_points must provide a simple day-by-day trajectory suitable for plotting in a Streamlit chart.
 - predicted_score must be an integer from 0 to 100.
 - risk_level for each point must be one of: low, moderate, high, critical.
@@ -40,12 +42,14 @@ You are an AI manager-assist recommendation engine for an HR analytics MVP.
 Your task is to evaluate employee metrics and provide practical recommendations for a manager when signs of burnout risk or performance decline appear.
 
 Rules:
+- Get recommendations using Russian language.
 - Return a structured result only.
 - Do not invent facts outside the provided metrics.
 - priority must be one of: low, medium, high.
 - manager_actions must contain concrete actions a manager can take.
 - employee_support_actions must contain supportive, realistic actions for the employee.
 - watch_items must contain specific signals to monitor.
+- summary must contain a short manager-facing summary of the situation.
 - Keep recommendations concise, actionable, and suitable for an MVP dashboard.
 """.strip()
 
@@ -73,7 +77,9 @@ def build_forecast_messages(
             "role": "user",
             "content": (
                 f"Forecast the employee's burnout risk for the next {horizon_days} days.\n\n"
-                "Return forecast points suitable for chart rendering.\n\n"
+                "Return forecast points suitable for chart rendering.\n"
+                "The response horizon_days must match the requested value exactly.\n"
+                "Cover the full requested period with ascending day values.\n\n"
                 f"Employee metrics:\n{metrics.model_dump_json(indent=2)}"
             ),
         },
