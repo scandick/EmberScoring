@@ -13,7 +13,6 @@ from app.repositories.metric_repository import MetricRepository
 from app.repositories.prediction_repository import PredictionRepository
 
 from llm.schemas import BurnoutScoreResult
-from llm.schemas import EmployeeMetrics
 from llm.schemas import RecommendationResult
 
 
@@ -61,21 +60,27 @@ def score_employee(
     return result
 
 
-@router.get(
-    "/score/employee/{id}/history",
-)
-def get_score_history(
-    id: int,
-    db: Session = Depends(get_db),
-):
-    return PredictionRepository.get_prediction_history(db, id)
-
-
 @router.post(
-    "/score/employee/recommendations",
+    "/score/employee/{id}/recommendations",
     response_model=RecommendationResult,
 )
 def get_recommendations(
-    metrics: EmployeeMetrics,
+    id: int,
+    db: Session = Depends(get_db),
 ) -> RecommendationResult:
-    return LLMService.recommendations(metrics)
+    employee = EmployeeRepository.get_employee(db, id)
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    metric = MetricRepository.get_latest_employee_metrics(db, id)
+
+    if not metric:
+        raise HTTPException(status_code=404, detail="Metrics not found")
+
+    employee_metrics = LLMService.build_employee_metrics(
+        employee,
+        metric,
+    )
+
+    return LLMService.recommendations(employee_metrics)

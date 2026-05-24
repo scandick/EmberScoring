@@ -1,10 +1,11 @@
 from datetime import date
+from typing import Optional
 
 from pydantic import BaseModel
 
 
 class MetricResponse(BaseModel):
-    id: int
+    id: Optional[int] = None
     employee_id: int
     metric_date: date
 
@@ -18,7 +19,7 @@ class MetricResponse(BaseModel):
 
 
 class TeamMetricSummary(BaseModel):
-    team_id: int
+    team: str
 
     avg_overtime_hours: float
     avg_sick_leave_days: float
