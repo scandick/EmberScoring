@@ -14,13 +14,29 @@ class EmployeeRepository:
         )
 
     @staticmethod
-    def get_all_employees(db: Session):
-        return db.query(Employee).all()
-
-    @staticmethod
-    def get_team_employees(db: Session, team_id: int):
+    def get_all_employees(
+        db: Session,
+        skip: int = 0,
+        limit: int = 100,
+    ):
         return (
             db.query(Employee)
-            .filter(Employee.team_id == team_id)
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def get_team_employees(
+        db: Session,
+        team: str,
+        skip: int = 0,
+        limit: int = 100,
+    ):
+        return (
+            db.query(Employee)
+            .filter(Employee.team == team)
+            .offset(skip)
+            .limit(limit)
             .all()
         )

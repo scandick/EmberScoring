@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -33,9 +34,11 @@ def get_employee(
     response_model=list[EmployeeResponse],
 )
 def get_employees(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    return EmployeeRepository.get_all_employees(db)
+    return EmployeeRepository.get_all_employees(db, skip=skip, limit=limit)
 
 
 @router.get(
@@ -44,6 +47,8 @@ def get_employees(
 )
 def get_team_employees(
     team: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    return EmployeeRepository.get_team_employees(db, team)
+    return EmployeeRepository.get_team_employees(db, team, skip=skip, limit=limit)
