@@ -1,4 +1,4 @@
-from schemas import EmployeeMetrics
+from llm.schemas import EmployeeMetrics
 
 
 CURRENT_BURNOUT_SYSTEM_PROMPT = """

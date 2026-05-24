@@ -14,8 +14,7 @@ class MetricResponse(BaseModel):
     night_activity_pct: float
     meeting_load: float
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class TeamMetricSummary(BaseModel):

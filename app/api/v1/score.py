@@ -8,11 +8,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.prediction import Prediction
 from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.llm_service import LLMService
 from app.repositories.metric_repository import MetricRepository
 from app.repositories.prediction_repository import PredictionRepository
-from app.services.llm_service import LLMService
 
 from llm.schemas import BurnoutScoreResult
+from llm.schemas import EmployeeMetrics
 from llm.schemas import RecommendationResult
 
 
@@ -52,7 +53,7 @@ def score_employee(
         risk_score=result.risk_score,
         risk_level=result.risk_level,
         forecast_text=getattr(result, "summary", ""),
-        raw_response=result.dict(),
+        raw_response=result.model_dump(),
     )
 
     PredictionRepository.save_prediction(db, prediction)
@@ -75,6 +76,6 @@ def get_score_history(
     response_model=RecommendationResult,
 )
 def get_recommendations(
-    metrics,
-):
+    metrics: EmployeeMetrics,
+) -> RecommendationResult:
     return LLMService.recommendations(metrics)

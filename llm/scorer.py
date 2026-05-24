@@ -1,10 +1,10 @@
-from client import get_default_llm_client
-from prompts import (
+from llm.client import get_default_llm_client
+from llm.prompts import (
     build_current_burnout_messages,
     build_forecast_messages,
     build_recommendation_messages,
 )
-from schemas import (
+from llm.schemas import (
     BurnoutForecastResult,
     BurnoutScoreResult,
     EmployeeMetrics,

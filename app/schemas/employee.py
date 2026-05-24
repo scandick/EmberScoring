@@ -9,5 +9,4 @@ class EmployeeResponse(BaseModel):
     department: str
     tenure_months: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

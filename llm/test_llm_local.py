@@ -1,9 +1,9 @@
-from scorer import (
+from llm.scorer import (
     score_current_burnout,
     forecast_burnout,
     generate_recommendations,
 )
-from schemas import EmployeeMetrics
+from llm.schemas import EmployeeMetrics
 
 
 metrics = EmployeeMetrics(

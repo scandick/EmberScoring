@@ -7,6 +7,10 @@ from app.api.v1.metrics import router as metrics_router
 from app.api.v1.score import router as score_router
 from app.core.database import Base
 from app.core.database import engine
+from app.models.employee import Employee  # noqa: F401
+from app.models.metric import Metric  # noqa: F401
+from app.models.prediction import Prediction  # noqa: F401
+from app.models.team import Team  # noqa: F401
 
 
 Base.metadata.create_all(bind=engine)

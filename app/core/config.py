@@ -1,11 +1,14 @@
-from pydantic import BaseSettings
+import os
+
+from dotenv import load_dotenv
 
 
-class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./burnout.db"
+load_dotenv()
 
-    class Config:
-        env_file = ".env"
+
+class Settings:
+    def __init__(self) -> None:
+        self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./burnout.db")
 
 
 settings = Settings()

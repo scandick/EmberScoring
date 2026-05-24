@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.prediction import Prediction
 from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.llm_service import LLMService
 from app.repositories.metric_repository import MetricRepository
 from app.repositories.prediction_repository import PredictionRepository
-from app.services.llm_service import LLMService
 
 from llm.schemas import BurnoutForecastResult
 
@@ -61,10 +61,16 @@ def forecast_employee(
         employee_id=id,
         created_at=datetime.utcnow(),
         horizon_months=horizon_days,
-        risk_score=result.risk_score,
-        risk_level=result.risk_level,
-        forecast_text=result.forecast_text,
-        raw_response=result.dict(),
+        risk_score=(
+            result.forecast_points[-1].predicted_score
+            if result.forecast_points else None
+        ),
+        risk_level=(
+            result.forecast_points[-1].risk_level
+            if result.forecast_points else None
+        ),
+        forecast_text=result.forecast_summary,
+        raw_response=result.model_dump(),
     )
 
     PredictionRepository.save_prediction(db, prediction)

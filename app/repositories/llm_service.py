@@ -4,7 +4,10 @@ from llm.scorer import (
     score_current_burnout,
 )
 
+from llm.schemas import BurnoutForecastResult
+from llm.schemas import BurnoutScoreResult
 from llm.schemas import EmployeeMetrics
+from llm.schemas import RecommendationResult
 
 from app.models.employee import Employee
 from app.models.metric import Metric
@@ -29,13 +32,16 @@ class LLMService:
         )
 
     @staticmethod
-    def score(metrics: EmployeeMetrics):
+    def score(metrics: EmployeeMetrics) -> BurnoutScoreResult:
         return score_current_burnout(metrics)
 
     @staticmethod
-    def forecast(metrics: EmployeeMetrics, horizon_days: int):
+    def forecast(
+        metrics: EmployeeMetrics,
+        horizon_days: int,
+    ) -> BurnoutForecastResult:
         return forecast_burnout(metrics, horizon_days)
 
     @staticmethod
-    def recommendations(metrics: EmployeeMetrics):
+    def recommendations(metrics: EmployeeMetrics) -> RecommendationResult:
         return generate_recommendations(metrics)
