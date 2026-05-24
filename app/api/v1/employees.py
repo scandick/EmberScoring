@@ -39,11 +39,11 @@ def get_employees(
 
 
 @router.get(
-    "/teams/{id}/employees",
+    "/teams/{team}/employees",
     response_model=list[EmployeeResponse],
 )
 def get_team_employees(
-    id: int,
+    team: str,
     db: Session = Depends(get_db),
 ):
-    return EmployeeRepository.get_team_employees(db, id)
+    return EmployeeRepository.get_team_employees(db, team)
