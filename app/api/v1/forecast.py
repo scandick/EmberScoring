@@ -1,0 +1,72 @@
+from datetime import datetime
+
+from fastapi import APIRouter
+from fastapi import Depends
+from fastapi import HTTPException
+from fastapi import Query
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.prediction import Prediction
+from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.metric_repository import MetricRepository
+from app.repositories.prediction_repository import PredictionRepository
+from app.services.llm_service import LLMService
+
+from llm.schemas import BurnoutForecastResult
+
+
+router = APIRouter(prefix="/api/v1")
+
+ALLOWED_HORIZONS = [7, 14, 30, 60]
+
+
+@router.post(
+    "/forecast/employee/{id}",
+    response_model=BurnoutForecastResult,
+)
+def forecast_employee(
+    id: int,
+    horizon_days: int = Query(30),
+    db: Session = Depends(get_db),
+):
+
+    if horizon_days not in ALLOWED_HORIZONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Allowed horizons: {ALLOWED_HORIZONS}",
+        )
+
+    employee = EmployeeRepository.get_employee(db, id)
+
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    metric = MetricRepository.get_latest_employee_metrics(db, id)
+
+    if not metric:
+        raise HTTPException(status_code=404, detail="Metrics not found")
+
+    employee_metrics = LLMService.build_employee_metrics(
+        employee,
+        metric,
+    )
+
+    result = LLMService.forecast(
+        employee_metrics,
+        horizon_days,
+    )
+
+    prediction = Prediction(
+        employee_id=id,
+        created_at=datetime.utcnow(),
+        horizon_months=horizon_days,
+        risk_score=result.risk_score,
+        risk_level=result.risk_level,
+        forecast_text=result.forecast_text,
+        raw_response=result.dict(),
+    )
+
+    PredictionRepository.save_prediction(db, prediction)
+
+    return result
