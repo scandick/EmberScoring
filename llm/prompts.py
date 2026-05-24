@@ -9,7 +9,8 @@ Your task is to assess the employee's current burnout risk using only the provid
 Rules:
 - Return a structured result only.
 - Do not invent missing metrics.
-- Treat higher overtime, sick leave, vacation gap, night activity, and meeting load as potential burnout indicators.
+- Focus primarily on work-life balance, job satisfaction, performance rating, overtime flag, employee recognition, leadership opportunities, innovation opportunities, years at company, and promotion history.
+- Treat poor work-life balance, low satisfaction, overtime, low recognition, and stalled growth as potential burnout indicators.
 - risk_score must be an integer from 0 to 100.
 - risk_level must be one of: low, moderate, high, critical.
 - key_factors must contain short, concrete explanations tied to the input metrics.
@@ -24,7 +25,8 @@ Your task is to forecast burnout risk over the requested time horizon using only
 
 Rules:
 - Return a structured result only.
-- Do not invent missing metrics outside reasonable forecast interpolation.
+- Treat the forecast as a scenario-based projection from the current employee profile, not a time-series prediction based on historical telemetry.
+- Do not invent missing metrics outside reasonable scenario interpolation.
 - horizon_days must match the requested forecast period.
 - trend must be one of: improving, stable, declining, volatile.
 - forecast_points must cover the full requested time horizon.
@@ -45,6 +47,7 @@ Rules:
 - Get recommendations using Russian language.
 - Return a structured result only.
 - Do not invent facts outside the provided metrics.
+- Base recommendations primarily on work-life balance, job satisfaction, overtime flag, recognition, growth opportunities, and promotion history.
 - priority must be one of: low, medium, high.
 - manager_actions must contain concrete actions a manager can take.
 - employee_support_actions must contain supportive, realistic actions for the employee.
