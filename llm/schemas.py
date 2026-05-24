@@ -4,12 +4,18 @@ from pydantic import BaseModel, Field
 
 class EmployeeMetrics(BaseModel):
     employee_id: str
-    team_id: str
-    overtime: float = Field(ge=0)
-    sick_leave: int = Field(ge=0)
-    vacation_gap: int = Field(ge=0)
-    night_activity: int = Field(ge=0)
-    meeting_load: float = Field(ge=0)
+    team: str
+    job_role: str
+    years_at_company: int = Field(ge=0)
+    work_life_balance: str
+    job_satisfaction: str
+    performance_rating: str
+    number_of_promotions: int = Field(ge=0)
+    overtime_flag: str
+    employee_recognition: str
+    leadership_opportunities: str
+    innovation_opportunities: str
+    attrition: str
 
     model_config = {"extra": "forbid"}
 
