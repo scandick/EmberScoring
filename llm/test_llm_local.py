@@ -8,12 +8,17 @@ from llm.schemas import EmployeeMetrics
 
 metrics = EmployeeMetrics(
     employee_id="E001",
-    team_id="sales",
-    overtime=26,
-    sick_leave=4,
-    vacation_gap=180,
-    night_activity=12,
-    meeting_load=18,
+    job_role="Sales",
+    years_at_company=6,
+    work_life_balance="Poor",
+    job_satisfaction="Low",
+    performance_rating="Average",
+    number_of_promotions=0,
+    overtime_flag="Yes",
+    employee_recognition="Low",
+    leadership_opportunities="No",
+    innovation_opportunities="No",
+    attrition="Stayed",
 )
 
 print("=== CURRENT SCORE ===")
