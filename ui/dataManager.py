@@ -6,6 +6,8 @@ import streamlit as st
 
 API_BASE_URL = os.getenv("EMBER_API_BASE_URL", "http://127.0.0.1:8000/api/v1")
 REQUEST_TIMEOUT_SECONDS = 30
+AI_REQUEST_TIMEOUT_SECONDS = 90
+FORECAST_REQUEST_TIMEOUT_SECONDS = 180
 
 
 def _clean_params(**params):
@@ -121,69 +123,69 @@ class DataManager:
         try:
             return _fetch_teams()
         except Exception as exc:
-            _handle_api_error("API error while fetching teams", exc)
+            _handle_api_error("Ошибка API при загрузке команд", exc)
             return []
 
     def get_employees(self, *, skip: int = 0, limit: int = 25, team: str | None = None, job_role: str | None = None):
         try:
             return _fetch_employees(skip, limit, team, job_role)
         except Exception as exc:
-            _handle_api_error("API error while fetching employees", exc)
+            _handle_api_error("Ошибка API при загрузке сотрудников", exc)
             return []
 
     def get_employee(self, employee_id: int):
         try:
             return _fetch_employee(employee_id)
         except Exception as exc:
-            _handle_api_error(f"API error while fetching employee {employee_id}", exc)
+            _handle_api_error(f"Ошибка API при загрузке сотрудника {employee_id}", exc)
             return None
 
     def get_team_employees(self, team: str, *, skip: int = 0, limit: int = 25, job_role: str | None = None):
         try:
             return _fetch_team_employees(team, skip, limit, job_role)
         except Exception as exc:
-            _handle_api_error(f"API error while fetching employees for team {team}", exc)
+            _handle_api_error(f"Ошибка API при загрузке сотрудников команды {team}", exc)
             return []
 
     def get_team_summary(self, team: str):
         try:
             return _fetch_team_summary(team)
         except Exception as exc:
-            _handle_api_error(f"API error while fetching team summary for {team}", exc)
+            _handle_api_error(f"Ошибка API при загрузке сводки по команде {team}", exc)
             return {}
 
     def get_cached_scores(self, *, skip: int = 0, limit: int = 25, team: str | None = None, job_role: str | None = None):
         try:
             return _fetch_latest_scores(skip, limit, team, job_role)
         except Exception as exc:
-            _handle_api_error("API error while fetching latest scores", exc)
+            _handle_api_error("Ошибка API при загрузке сохранённых результатов скоринга", exc)
             return []
 
     def get_latest_score(self, employee_id: int):
         try:
             return _fetch_latest_employee_score(employee_id)
         except Exception as exc:
-            _handle_api_error(f"API error while fetching latest score for employee {employee_id}", exc)
+            _handle_api_error(f"Ошибка API при загрузке последнего скоринга для сотрудника {employee_id}", exc)
             return None
 
     def get_score_stats(self, *, team: str | None = None, job_role: str | None = None):
         try:
             return _fetch_score_stats(team, job_role)
         except Exception as exc:
-            _handle_api_error("API error while fetching score statistics", exc)
+            _handle_api_error("Ошибка API при загрузке статистики скоринга", exc)
             return {"scored_employees": 0, "at_risk_employees": 0}
 
     def generate_score(self, employee_id: int):
         try:
             response = requests.post(
                 f"{API_BASE_URL}/score/employee/{employee_id}",
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=AI_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             _clear_score_caches()
             return response.json()
         except Exception as exc:
-            _handle_api_error(f"API error while generating score for employee {employee_id}", exc)
+            _handle_api_error(f"Ошибка API при запуске скоринга для сотрудника {employee_id}", exc)
             return None
 
     def generate_forecast(self, employee_id: int, horizon_days: int = 7):
@@ -191,24 +193,24 @@ class DataManager:
             response = requests.post(
                 f"{API_BASE_URL}/forecast/employee/{employee_id}",
                 params={"horizon_days": horizon_days},
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=FORECAST_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             return response.json()
         except Exception as exc:
-            _handle_api_error(f"API error while generating forecast for employee {employee_id}", exc)
+            _handle_api_error(f"Ошибка API при построении прогноза для сотрудника {employee_id}", exc)
             return None
 
     def generate_recommendations(self, employee_id: int):
         try:
             response = requests.post(
                 f"{API_BASE_URL}/score/employee/{employee_id}/recommendations",
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=AI_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             return response.json()
         except Exception as exc:
-            _handle_api_error(f"API error while generating recommendations for employee {employee_id}", exc)
+            _handle_api_error(f"Ошибка API при генерации рекомендаций для сотрудника {employee_id}", exc)
             return None
 
 
