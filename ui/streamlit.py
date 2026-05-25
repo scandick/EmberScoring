@@ -1,552 +1,555 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
 import altair as alt
-import datetime
+import pandas as pd
+import streamlit as st
+
 from dataManager import data
 
-### INIT DATA START ###
 
-# Expand to full screen
-st.set_page_config(page_title="Ops Dashboard", layout="wide")
+st.set_page_config(page_title="Ember", layout="wide")
 
-# --- STATE MANAGEMENT (Routing) ---
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "Dashboard"
-if 'selected_team' not in st.session_state:
-    st.session_state.selected_team = None
-if 'selected_employee' not in st.session_state:
-    st.session_state.selected_employee = None
+PAGE_SIZE = 25
 
 
-def navigate_to(page):
-    """Central routing function to change pages and clear sub-selections."""
+def init_state():
+    defaults = {
+        "current_page": "Dashboard",
+        "selected_team": None,
+        "selected_employee_id": None,
+        "employees_skip": 0,
+        "employee_team_filter": "All Teams",
+        "employee_job_role_filter": "",
+        "team_job_role_filter": "",
+        "forecast_results": {},
+        "recommendation_results": {},
+        "latest_score_overrides": {},
+        "recent_scored_employee_ids": [],
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def navigate_to(page: str):
     st.session_state.current_page = page
-    st.session_state.selected_team = None
-    st.session_state.selected_employee = None
+    if page != "Employees":
+        st.session_state.selected_employee_id = None
+    if page != "Teams":
+        st.session_state.selected_team = None
 
 
-def clear_team_selection():
-    st.session_state.selected_team = None
+def score_color(risk_level: str | None) -> str:
+    normalized = (risk_level or "").lower()
+    return {
+        "low": "#2e7d32",
+        "moderate": "#ef6c00",
+        "high": "#c62828",
+        "critical": "#7f0000",
+    }.get(normalized, "#546e7a")
 
 
-def clear_employee_selection():
-    st.session_state.selected_employee = None
+def score_label(score: dict | None) -> str:
+    if not score:
+        return "Not scored"
+    return f"{score['risk_level'].title()} | {int(score['risk_score'])}"
 
 
-today = datetime.date.today()
-
-team_states = {
-    "Engineering": {"status": "Healthy", "color": "#2e7b32"},
-    "Marketing": {"status": "Warning", "color": "#f57c00"},
-    "Sales": {"status": "⚠ Critical", "color": "#c62828"},
-    "Customer Support": {"status": "Healthy", "color": "#2e7b32"}
-}
-
-team_events = {
-    "Engineering": [
-        {"Date": pd.to_datetime(today - datetime.timedelta(days=45)), "Event": "Project 1 Started"},
-        {"Date": pd.to_datetime(today - datetime.timedelta(days=15)), "Event": "Major Release Deployed"}
-    ],
-    "Marketing": [
-        {"Date": pd.to_datetime(today - datetime.timedelta(days=30)), "Event": "Rebranding Campaign Launched"}
-    ],
-    "Sales": [
-        {"Date": pd.to_datetime(today - datetime.timedelta(days=60)), "Event": "Q1 Quota Reset"}
-    ],
-    "Customer Support": []
-}
+def remember_scored_employee(employee_id: int):
+    current = [value for value in st.session_state.recent_scored_employee_ids if value != employee_id]
+    current.insert(0, employee_id)
+    st.session_state.recent_scored_employee_ids = current[:10]
 
 
-# --- DATA GENERATION (CACHED) ---
-@st.cache_data
-def load_company_data():
-    start_date = today - datetime.timedelta(days=365 * 4)
-    dates = pd.date_range(start=start_date, end=today)
-
-    data_dict = {'Date': dates}
-    seasonality = 8 * np.sin(2 * np.pi * dates.dayofyear / 365.25)
-
-    for team in team_states.keys():
-        base_score = 75
-        noise = np.random.normal(loc=0, scale=10, size=len(dates))
-        scores = base_score + seasonality + noise
-        data_dict[team] = np.clip(scores, 0, 100)
-
-    return pd.DataFrame(data_dict)
+def get_teams():
+    return data.get_teams()
 
 
-@st.cache_data
-def build_employee_dataframe():
-    """Builds the DataFrame from the API data manager and fetches scores."""
-    employees = data.employees
-    emp_list = []
-
-    for emp_id, emp_data in employees.items():
-        # Fetch the score for this specific employee
-        score_data = data.get_score(emp_id)
-
-        emp_list.append({
-            "id": emp_id,
-            "Name": emp_data.get("employee_id", f"EMP-{emp_id}"),  # API uses employee_id instead of Name
-            "Team": emp_data.get("team", "Unknown"),
-            "Job Role": emp_data.get("job_role", "N/A"),
-            "Years at Company": emp_data.get("years_at_company", 0),
-            "Work Life Balance": emp_data.get("work_life_balance", "N/A"),
-            "Job Satisfaction": emp_data.get("job_satisfaction", "N/A"),
-            "Performance Rating": emp_data.get("performance_rating", "N/A"),
-            "Overtime": emp_data.get("overtime_flag", "N/A"),
-
-            # Map score endpoint results
-            "Current Ember": score_data.get("risk_score", 0),
-            "Status": score_data.get("risk_level", "Unknown").title(),
-            "Key Factors": score_data.get("key_factors", []),
-            "Summary": score_data.get("summary", "No summary available.")
-        })
-
-    return pd.DataFrame(emp_list)
+def get_team_options():
+    teams = get_teams()
+    return ["All Teams"] + [item["team"] for item in teams]
 
 
-df = load_company_data()
-emp_df = build_employee_dataframe()
-min_available_date = df['Date'].min().date()
+def list_employees(team: str | None, job_role: str | None, skip: int):
+    return data.get_employees(
+        skip=skip,
+        limit=PAGE_SIZE,
+        team=None if team == "All Teams" else team,
+        job_role=job_role or None,
+    )
 
 
-### INIT DATA END ###
-
-### DRAW SEPARATE PAGES START ###
-
-# --- DASHBOARD PAGE ---
-def draw_dashboard_page():
-    st.title("Company Overview 🌍")
-    st.write("Critical metrics and cross-team alerts at a glance.")
-    st.divider()
-
-    # Calculate company-wide averages for the last 30 days
-    recent_df = df[df['Date'].dt.date >= (today - datetime.timedelta(days=30))]
-    company_avg = recent_df[list(team_states.keys())].mean().mean()
-
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Company-Wide Ember (30d)", f"{company_avg:.1f}")
-    kpi2.metric("Total Employees", len(emp_df))
-    kpi3.metric("Employees At Risk", len(emp_df[emp_df['Status'].isin(['High', 'Critical'])]))
-
-    st.write("---")
-    st.subheader("Critical Alerts")
-
-    alert_c1, alert_c2 = st.columns(2)
-    with alert_c1:
-        st.error("**Sales Team** is marked as ⚠ Critical. Ember scores trending downwards.")
-    with alert_c2:
-        st.warning("**Marketing Team** ad spend approaching limit.")
-
-    st.write("---")
-    st.subheader("Recent Team Events")
-
-    # Flatten and sort events
-    all_events = []
-    for team, events in team_events.items():
-        for e in events:
-            all_events.append({"Team": team, "Date": e["Date"], "Event": e["Event"]})
-
-    events_df = pd.DataFrame(all_events).sort_values("Date", ascending=False).head(5)
-    st.dataframe(events_df, hide_index=True, use_container_width=True)
+def list_employee_scores(team: str | None, job_role: str | None, skip: int):
+    scores = data.get_cached_scores(
+        skip=skip,
+        limit=PAGE_SIZE,
+        team=None if team == "All Teams" else team,
+        job_role=job_role or None,
+    )
+    return {item["employee_id"]: item for item in scores}
 
 
-# --- TEAM OVERVIEW ---
-def draw_team_overview():
-    st.title("Teams Overview 🏢")
-    st.caption("Review 30-day summaries and click 'View' for detailed insights.")
+def draw_sidebar():
+    with st.sidebar:
+        st.title("Ember")
+        st.caption(f"API: `{data.api_base_url}`")
 
-    thirty_days_ago = today - datetime.timedelta(days=30)
-    recent_df = df[df['Date'].dt.date >= thirty_days_ago]
-
-    h1, h2, h3, h4, h5 = st.columns([2, 1.5, 3, 1.5, 1.5])
-    h1.write("**Team**")
-    h2.write("**Avg Score**")
-    h3.write("**Trend (30d)**")
-    h4.write("**At Risk**")
-    h5.write("**Action**")
-
-    st.divider()
-
-    for team, state in team_states.items():
-        team_data = recent_df[['Date', team]].rename(columns={team: 'Ember'})
-        avg_score = team_data['Ember'].mean()
-
-        # Calculate real at_risk from the API dataframe
-        at_risk = len(emp_df[(emp_df['Team'] == team) & (emp_df['Status'].isin(['High', 'Critical']))])
-
-        c1, c2, c3, c4, c5 = st.columns([2, 1.5, 3, 1.5, 1.5], vertical_alignment="center")
-
-        c1.markdown(
-            f"<span style='font-size:1.1rem; font-weight:600;'>{team}</span><br>"
-            f"<span style='color:{state['color']}; font-size:0.9rem;'>{state['status']}</span>",
-            unsafe_allow_html=True
+        st.button(
+            "Dashboard",
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == "Dashboard" else "secondary",
+            on_click=navigate_to,
+            args=("Dashboard",),
+        )
+        st.button(
+            "Teams",
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == "Teams" else "secondary",
+            on_click=navigate_to,
+            args=("Teams",),
+        )
+        st.button(
+            "Employees",
+            use_container_width=True,
+            type="primary" if st.session_state.current_page == "Employees" else "secondary",
+            on_click=navigate_to,
+            args=("Employees",),
         )
 
-        c2.write(f"{avg_score:.1f} / 100")
+        selected_employee_id = st.session_state.selected_employee_id
+        if selected_employee_id is not None:
+            employee = data.get_employee(selected_employee_id)
+            latest_score = (
+                st.session_state.latest_score_overrides.get(selected_employee_id)
+                or data.get_latest_score(selected_employee_id)
+            )
 
-        sparkline = alt.Chart(team_data).mark_line(
-            color=state['color'], strokeWidth=2
-        ).encode(
-            x=alt.X('Date:T', axis=None),
-            y=alt.Y('Ember:Q', axis=None, scale=alt.Scale(domain=[0, 100]))
-        ).properties(height=40)
+            st.divider()
+            st.caption("Current AI Focus")
 
-        with c3:
-            st.altair_chart(sparkline, use_container_width=True)
+            employee_label = (
+                f"{employee['employee_id']} | {employee['team']}"
+                if employee
+                else f"Employee #{selected_employee_id}"
+            )
+            st.write(f"**{employee_label}**")
 
-        c4.write(f"{at_risk} emp.")
+            if latest_score:
+                color = score_color(latest_score.get("risk_level"))
+                st.markdown(
+                    f"<span style='color:{color}; font-weight:600;'>{latest_score['risk_level'].title()} | {int(latest_score['risk_score'])}</span>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.caption("Not scored")
 
-        with c5:
-            if st.button("View ➡️", key=f"btn_{team}", use_container_width=True):
-                st.session_state.selected_team = team
-                st.rerun()
-    st.write("---")
+            st.button(
+                f"Employee Profile: {employee['employee_id'] if employee else selected_employee_id}",
+                use_container_width=True,
+                type="primary" if st.session_state.current_page == "Employees" else "secondary",
+                on_click=navigate_to,
+                args=("Employees",),
+            )
 
+        recent_ids = st.session_state.recent_scored_employee_ids
+        if recent_ids:
+            st.divider()
+            st.caption("Recent Scoring History")
 
-# --- DETAILED TEAM PAGE ---
-def draw_main_team_page():
-    team_name = st.session_state.selected_team
-    status_color = team_states[team_name]["color"]
+            for employee_id in recent_ids:
+                employee = data.get_employee(employee_id)
+                latest_score = (
+                    st.session_state.latest_score_overrides.get(employee_id)
+                    or data.get_latest_score(employee_id)
+                )
 
-    st.button("⬅️ Back to Teams Directory", on_click=clear_team_selection)
+                if employee is None:
+                    continue
 
-    head_col1, head_col2 = st.columns([3, 1])
-    with head_col1:
-        st.markdown(f"<h1 style='color: {status_color}; margin-bottom: 0;'>📊 {team_name} Metrics</h1>",
-                    unsafe_allow_html=True)
-    with head_col2:
-        st.write("")
-        compare_history = st.toggle("Compare vs 3-Yr Avg", value=True)
-
-    st.divider()
-
-    control_col1, control_col2 = st.columns([1, 2])
-    with control_col1:
-        timeframe = st.date_input(
-            "Select Timeframe (Start - End)",
-            value=(today - datetime.timedelta(days=30), today),
-            min_value=min_available_date,
-            max_value=today
-        )
-
-    if len(timeframe) != 2:
-        st.warning("Please select an end date on the calendar.")
-        st.stop()
-
-    current_start, current_end = timeframe
-    period_length = (current_end - current_start).days
-
-    current_mask = (df['Date'].dt.date >= current_start) & (df['Date'].dt.date <= current_end)
-    current_df = df[current_mask][['Date', team_name]].rename(columns={team_name: 'Ember'})
-
-    hist_dfs = []
-    for i in range(1, 4):
-        h_start = pd.to_datetime(current_start) - pd.DateOffset(years=i)
-        h_end = pd.to_datetime(current_end) - pd.DateOffset(years=i)
-
-        h_mask = (df['Date'] >= h_start) & (df['Date'] <= h_end)
-        temp_df = df[h_mask][['Date', team_name]].rename(columns={team_name: 'Ember'}).copy()
-
-        if not temp_df.empty:
-            temp_df['Overlay_Date'] = temp_df['Date'] + pd.DateOffset(years=i)
-            hist_dfs.append(temp_df)
-
-    if hist_dfs:
-        combined_hist = pd.concat(hist_dfs)
-        hist_avg_df = combined_hist.groupby('Overlay_Date')['Ember'].mean().reset_index()
-    else:
-        hist_avg_df = pd.DataFrame(columns=['Overlay_Date', 'Ember'])
-
-    current_avg = current_df['Ember'].mean() if not current_df.empty else 0
-    hist_avg = hist_avg_df['Ember'].mean() if not hist_avg_df.empty else 0
-
-    avg_delta = f"{current_avg - hist_avg:.1f} vs 3-yr avg" if (compare_history and not hist_avg_df.empty) else None
-
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Avg Ember Score", f"{current_avg:.1f}", delta=avg_delta)
-    kpi2.metric("Days in Period", period_length + 1)
-    kpi3.metric("Highest Daily Score", f"{current_df['Ember'].max():.1f}")
-
-    # --- NEW: FASTAPI TEAM METRICS ---
-    st.write("---")
-    st.write("### ⚙️ Operational Workload & Health")
-
-    with st.spinner("Loading operational metrics..."):
-        team_summary = data.get_team_summary(team_name)
-
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric(
-        "Overtime",
-        f"{team_summary.get('avg_overtime_hours', 0):.1f} hrs",
-        help="Average weekly overtime hours per employee"
-    )
-    m2.metric(
-        "Sick Leave",
-        f"{team_summary.get('avg_sick_leave_days', 0):.1f} days",
-        help="Average sick leave taken in the period"
-    )
-    m3.metric(
-        "Vacation Gap",
-        f"{team_summary.get('avg_vacation_gap_days', 0):.0f} days",
-        help="Average days since an employee's last taken vacation"
-    )
-    m4.metric(
-        "Night Activity",
-        f"{team_summary.get('avg_night_activity_pct', 0):.1f}%",
-        help="Percentage of communications/activity outside standard working hours"
-    )
-    m5.metric(
-        "Meeting Load",
-        f"{team_summary.get('avg_meeting_load', 0):.1f} hrs",
-        help="Average weekly hours spent in internal meetings"
-    )
-
-    st.write("")
-    # ---------------------------------
-
-    domain_start = current_start.strftime('%Y-%m-%d')
-    domain_end = current_end.strftime('%Y-%m-%d')
-
-    raw_line = alt.Chart(current_df).mark_line(
-        color=status_color, strokeWidth=1.5, opacity=0.3, clip=True
-    ).encode(
-        x=alt.X('Date:T', title='', scale=alt.Scale(domain=[domain_start, domain_end])),
-        y=alt.Y('Ember:Q', title='Ember Score', scale=alt.Scale(domain=[0, 100]))
-    )
-
-    trend_line = raw_line.transform_loess('Date', 'Ember', bandwidth=0.3).mark_line(color=status_color, strokeWidth=4,
-                                                                                    clip=True)
-    final_chart = raw_line + trend_line
-
-    if compare_history and not hist_avg_df.empty:
-        hist_overlay = alt.Chart(hist_avg_df).transform_loess(
-            'Overlay_Date', 'Ember', bandwidth=0.3
-        ).mark_line(
-            color='gray', strokeWidth=2, strokeDash=[5, 5], opacity=0.6, clip=True
-        ).encode(x='Overlay_Date:T', y='Ember:Q')
-        final_chart += hist_overlay
-
-    events_df = pd.DataFrame(team_events[team_name])
-    if not events_df.empty:
-        mask = (events_df['Date'].dt.date >= current_start) & (events_df['Date'].dt.date <= current_end)
-        filtered_events = events_df[mask]
-
-        if not filtered_events.empty:
-            event_lines = alt.Chart(filtered_events).mark_rule(
-                color='gray', strokeDash=[2, 2], strokeWidth=2, clip=True
-            ).encode(x='Date:T')
-
-            event_labels = alt.Chart(filtered_events).mark_text(
-                align='left', dx=5, color='white', fontWeight='bold', fontSize=12, clip=True
-            ).encode(x='Date:T', text='Event:N', y=alt.value(20))
-            final_chart += event_lines + event_labels
-
-    st.altair_chart(final_chart.interactive(bind_y=False).properties(height=400), use_container_width=True)
-
-    if compare_history:
-        st.caption("Solid line: Current Period | Dashed gray line: 3-Year Historical Average")
-
-    st.divider()
-    st.write("### Diagnostic Insights")
-
-    current_df['Day_Name'] = current_df['Date'].dt.day_name()
-    insight_col1, insight_col2 = st.columns(2)
-
-    with insight_col1:
-        st.write("##### Time Spent in Zones")
-        bins = [0, 60, 80, 100]
-        labels = ['Struggling (<60)', 'Stable (60-80)', 'Thriving (>80)']
-        current_df['Zone'] = pd.cut(current_df['Ember'], bins=bins, labels=labels, include_lowest=True)
-        donut_data = current_df['Zone'].value_counts().reset_index()
-        donut_data.columns = ['Zone', 'Days']
-
-        zone_colors = alt.Scale(
-            domain=['Struggling (<60)', 'Stable (60-80)', 'Thriving (>80)'],
-            range=['#c62828', '#f57c00', '#2e7b32']
-        )
-
-        donut_chart = alt.Chart(donut_data).mark_arc(innerRadius=65, stroke="#fff").encode(
-            theta=alt.Theta('Days:Q'),
-            color=alt.Color('Zone:N', scale=zone_colors, legend=alt.Legend(title="Health Zones", orient="bottom")),
-            tooltip=['Zone', 'Days']
-        ).properties(height=300)
-
-        st.altair_chart(donut_chart, use_container_width=True)
-
-    with insight_col2:
-        st.write("##### Mood Consistency (Distribution)")
-        histogram = alt.Chart(current_df).mark_bar(color=status_color, opacity=0.8).encode(
-            x=alt.X('Ember:Q', bin=alt.Bin(maxbins=20), title='Ember Score Bucket'),
-            y=alt.Y('count()', title='Number of Days')
-        ).properties(height=300)
-
-        avg_line = alt.Chart(pd.DataFrame({'mean': [current_avg]})).mark_rule(
-            color='red', strokeDash=[5, 5], strokeWidth=2
-        ).encode(x='mean:Q')
-
-        st.altair_chart(histogram + avg_line, use_container_width=True)
-
-    # --- TEAM MEMBERS SECTION ---
-    st.divider()
-    st.write("### Team Members")
-
-    team_emps = emp_df[emp_df['Team'] == team_name]
-
-    if team_emps.empty:
-        st.info("No employees assigned to this team yet.")
-    else:
-        h1, h2, h3 = st.columns([3, 2, 2])
-        h1.write("**Employee Name**")
-        h2.write("**Status / Score**")
-        h3.write("**Action**")
-        st.write("---")
-
-        for idx, row in team_emps.iterrows():
-            c1, c2, c3 = st.columns([3, 2, 2], vertical_alignment="center")
-
-            c1.write(f"**{row['Name']}**")
-
-            # Updated Color Logic (High Score = High Risk = Red)
-            score_color = "red" if row['Status'] in ["High", "Critical"] else (
-                "orange" if row['Status'] == "Moderate" else "green")
-
-            c2.markdown(
-                f"{row['Status']} &nbsp;|&nbsp; <span style='color:{score_color}; font-weight:bold;'>{row['Current Ember']}</span>",
-                unsafe_allow_html=True)
-
-            with c3:
-                if st.button("View Profile ➡️", key=f"team_emp_btn_{idx}", use_container_width=True):
+                button_label = f"{employee['employee_id']} | {employee['team']}"
+                if st.button(button_label, key=f"recent_scored_{employee_id}", use_container_width=True):
+                    st.session_state.selected_employee_id = employee_id
                     st.session_state.current_page = "Employees"
-                    st.session_state.selected_employee = row['Name']
                     st.rerun()
 
-
-# --- EMPLOYEES OVERVIEW PAGE ---
-def draw_employees_overview():
-    st.title("Employees Directory 🧑‍💻")
-    st.caption("View current status and Burnout Risk scores for all employees.")
-
-    filter_col, _ = st.columns([1, 2])
-    with filter_col:
-        team_filter = st.selectbox("Filter by Team", ["All Teams"] + list(team_states.keys()))
-
-    display_df = emp_df if team_filter == "All Teams" else emp_df[emp_df['Team'] == team_filter]
-
-    h1, h2, h3, h4 = st.columns([2, 2, 2, 1.5])
-    h1.write("**Employee ID**")
-    h2.write("**Team**")
-    h3.write("**Risk Level / Score**")
-    h4.write("**Action**")
-    st.divider()
-
-    for idx, row in display_df.iterrows():
-        c1, c2, c3, c4 = st.columns([2, 2, 2, 1.5], vertical_alignment="center")
-
-        c1.write(f"**{row['Name']}**")
-        c2.write(row['Team'])
-
-        # Updated Color Logic (High Score = High Risk = Red)
-        score_color = "red" if row['Status'] in ["High", "Critical"] else (
-            "orange" if row['Status'] == "Moderate" else "green")
-
-        c3.markdown(
-            f"{row['Status']} &nbsp;|&nbsp; <span style='color:{score_color}; font-weight:bold;'>{row['Current Ember']}</span>",
-            unsafe_allow_html=True)
-
-        with c4:
-            if st.button("Profile ➡️", key=f"emp_btn_{idx}", use_container_width=True):
-                st.session_state.selected_employee = row['Name']
-                st.rerun()
-    st.write("---")
+                if latest_score:
+                    color = score_color(latest_score.get("risk_level"))
+                    st.markdown(
+                        f"<span style='color:{color}; font-size:0.9rem;'>{latest_score['risk_level'].title()} | {int(latest_score['risk_score'])}</span>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("Score unavailable")
 
 
-# --- EMPLOYEE VIEW PAGE ---
-def draw_employee_view():
-    emp_name = st.session_state.selected_employee
-    emp_details = emp_df[emp_df['Name'] == emp_name].iloc[0]
+def draw_dashboard():
+    teams = get_teams()
+    stats = data.get_score_stats()
 
-    st.button("⬅️ Back to Employees Directory", on_click=clear_employee_selection)
+    total_employees = sum(item["employee_count"] for item in teams)
+    total_teams = len(teams)
 
-    st.title(f"🧑‍💻 {emp_name}")
-    st.write(f"**Team:** {emp_details['Team']}  |  **Current Status:** {emp_details['Status']}")
-    st.divider()
+    st.title("Company Dashboard")
+    st.caption("API-driven overview of employees, teams, and cached AI scoring results.")
 
-    st.write("### Employee Profile")
-
-    # Replaced mock charts with actual static API Data Metrics
-    row1_cols = st.columns(3)
-    row1_cols[0].metric("Job Role", str(emp_details['Job Role']))
-    row1_cols[1].metric("Years at Company", str(emp_details['Years at Company']))
-    row1_cols[2].metric("Performance Rating", str(emp_details['Performance Rating']))
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Employees", total_employees)
+    k2.metric("Teams", total_teams)
+    k3.metric("Scored Employees", stats["scored_employees"])
+    k4.metric("Employees At Risk", stats["at_risk_employees"])
 
     st.write("")
 
-    row2_cols = st.columns(3)
-    row2_cols[0].metric("Work/Life Balance", str(emp_details['Work Life Balance']))
-    row2_cols[1].metric("Job Satisfaction", str(emp_details['Job Satisfaction']))
-    row2_cols[2].metric("Overtime", str(emp_details['Overtime']))
+    teams_df = pd.DataFrame(teams)
+    if teams_df.empty:
+        st.info("No team data available.")
+        return
+
+    left, right = st.columns([1.4, 1])
+
+    with left:
+        chart = (
+            alt.Chart(teams_df)
+            .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+            .encode(
+                x=alt.X("team:N", title="Team", sort="-y"),
+                y=alt.Y("employee_count:Q", title="Employees"),
+                color=alt.value("#1f77b4"),
+                tooltip=["team", "employee_count"],
+            )
+            .properties(height=340)
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    with right:
+        st.subheader("Teams")
+        st.dataframe(
+            teams_df.rename(columns={"team": "Team", "employee_count": "Employees"}),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def draw_team_page():
+    teams = get_teams()
+    if not teams:
+        st.info("No teams available.")
+        return
+
+    team_names = [item["team"] for item in teams]
+    default_team = st.session_state.selected_team or team_names[0]
+    selected_team = st.selectbox(
+        "Team",
+        options=team_names,
+        index=team_names.index(default_team) if default_team in team_names else 0,
+    )
+    st.session_state.selected_team = selected_team
+
+    selected_team_meta = next(item for item in teams if item["team"] == selected_team)
+    summary = data.get_team_summary(selected_team)
+    team_scores = data.get_score_stats(team=selected_team)
+    team_employees = data.get_team_employees(
+        selected_team,
+        skip=0,
+        limit=PAGE_SIZE,
+        job_role=st.session_state.team_job_role_filter or None,
+    )
+    cached_scores = {
+        item["employee_id"]: item
+        for item in data.get_cached_scores(
+            skip=0,
+            limit=PAGE_SIZE,
+            team=selected_team,
+            job_role=st.session_state.team_job_role_filter or None,
+        )
+    }
+
+    st.title(f"Team Overview: {selected_team}")
+    st.caption("Derived workload indicators plus current team roster.")
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Employees", selected_team_meta["employee_count"])
+    k2.metric("Scored Employees", team_scores["scored_employees"])
+    k3.metric("Employees At Risk", team_scores["at_risk_employees"])
+
+    if summary:
+        s1, s2, s3, s4, s5 = st.columns(5)
+        s1.metric("Avg Overtime", f"{summary.get('avg_overtime_hours', 0):.1f} hrs")
+        s2.metric("Avg Sick Leave", f"{summary.get('avg_sick_leave_days', 0):.1f} days")
+        s3.metric("Avg Vacation Gap", f"{summary.get('avg_vacation_gap_days', 0):.0f} days")
+        s4.metric("Avg Night Activity", f"{summary.get('avg_night_activity_pct', 0):.1f}%")
+        s5.metric("Avg Meeting Load", f"{summary.get('avg_meeting_load', 0):.1f} hrs")
+
+    st.write("")
+    st.subheader("Team Members")
+    st.text_input(
+        "Filter by job role",
+        key="team_job_role_filter",
+        placeholder="Exact job role match, e.g. Education",
+    )
+
+    if not team_employees:
+        st.info("No employees matched this team filter.")
+        return
+
+    rows = []
+    for employee in team_employees:
+        latest_score = cached_scores.get(employee["id"])
+        rows.append(
+            {
+                "ID": employee["id"],
+                "Employee ID": employee["employee_id"],
+                "Job Role": employee["job_role"],
+                "Years": employee["years_at_company"],
+                "Status": score_label(latest_score),
+            }
+        )
+
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    selected_employee = st.selectbox(
+        "Open employee profile",
+        options=team_employees,
+        format_func=lambda emp: f"{emp['employee_id']} | {emp['job_role']}",
+    )
+
+    if st.button("Open Profile", use_container_width=False):
+        st.session_state.selected_employee_id = selected_employee["id"]
+        st.session_state.current_page = "Employees"
+        st.rerun()
+
+
+def draw_employee_directory():
+    st.title("Employees Directory")
+    st.caption("Raw HR profile data plus saved burnout scoring results.")
+
+    teams = get_team_options()
+    filter_col1, filter_col2 = st.columns([1, 1])
+
+    with filter_col1:
+        current_team = st.selectbox(
+            "Filter by team",
+            options=teams,
+            key="employee_team_filter",
+        )
+
+    with filter_col2:
+        st.text_input(
+            "Filter by job role",
+            key="employee_job_role_filter",
+            placeholder="Exact job role match, e.g. Media",
+        )
+
+    employees = list_employees(
+        current_team,
+        st.session_state.employee_job_role_filter,
+        st.session_state.employees_skip,
+    )
+    score_map = list_employee_scores(
+        current_team,
+        st.session_state.employee_job_role_filter,
+        st.session_state.employees_skip,
+    )
+
+    if not employees:
+        st.info("No employees matched the current filters.")
+        return
+
+    rows = []
+    for employee in employees:
+        latest_score = score_map.get(employee["id"])
+        rows.append(
+            {
+                "ID": employee["id"],
+                "Employee ID": employee["employee_id"],
+                "Team": employee["team"],
+                "Job Role": employee["job_role"],
+                "Years": employee["years_at_company"],
+                "Work-Life Balance": employee["work_life_balance"],
+                "Job Satisfaction": employee["job_satisfaction"],
+                "Performance": employee["performance_rating"],
+                "Risk": score_label(latest_score),
+            }
+        )
+
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    selection_col1, selection_col2, selection_col3 = st.columns([1.2, 1, 1])
+    with selection_col1:
+        selected_employee = st.selectbox(
+            "Open employee profile",
+            options=employees,
+            format_func=lambda emp: f"{emp['employee_id']} | {emp['team']} | {emp['job_role']}",
+        )
+        if st.button("Open Profile", use_container_width=True):
+            st.session_state.selected_employee_id = selected_employee["id"]
+            st.rerun()
+
+    with selection_col2:
+        prev_disabled = st.session_state.employees_skip == 0
+        if st.button("Previous Page", use_container_width=True, disabled=prev_disabled):
+            st.session_state.employees_skip = max(st.session_state.employees_skip - PAGE_SIZE, 0)
+            st.rerun()
+
+    with selection_col3:
+        next_disabled = len(employees) < PAGE_SIZE
+        if st.button("Next Page", use_container_width=True, disabled=next_disabled):
+            st.session_state.employees_skip += PAGE_SIZE
+            st.rerun()
+
+
+def draw_forecast_section(employee_id: int):
+    st.subheader("Forecast")
+    forecast_horizon = st.selectbox(
+        "Forecast horizon (days)",
+        options=[7, 14, 30, 60],
+        index=0,
+        key=f"forecast_horizon_{employee_id}",
+    )
+
+    if st.button("Generate Forecast", key=f"forecast_button_{employee_id}"):
+        with st.spinner("Generating forecast..."):
+            result = data.generate_forecast(employee_id, forecast_horizon)
+        if result:
+            st.session_state.forecast_results[(employee_id, forecast_horizon)] = result
+
+    forecast_result = st.session_state.forecast_results.get((employee_id, forecast_horizon))
+    if not forecast_result:
+        st.info("No forecast generated yet.")
+        return
+
+    st.caption(forecast_result["forecast_summary"])
+    st.caption(forecast_result["confidence_note"])
+
+    points_df = pd.DataFrame(forecast_result["forecast_points"])
+    chart = (
+        alt.Chart(points_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("day:Q", title="Day"),
+            y=alt.Y("predicted_score:Q", title="Predicted Risk Score", scale=alt.Scale(domain=[0, 100])),
+            tooltip=["day", "predicted_score", "risk_level"],
+        )
+        .properties(height=280)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def draw_recommendations_section(employee_id: int):
+    st.subheader("Recommendations")
+
+    if st.button("Generate Recommendations", key=f"recommendations_button_{employee_id}"):
+        with st.spinner("Generating recommendations..."):
+            result = data.generate_recommendations(employee_id)
+        if result:
+            st.session_state.recommendation_results[employee_id] = result
+
+    recommendations = st.session_state.recommendation_results.get(employee_id)
+    if not recommendations:
+        st.info("No recommendations generated yet.")
+        return
+
+    st.markdown(f"**Priority:** {recommendations['priority'].title()}")
+    st.markdown(f"**Summary:** {recommendations['summary']}")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("**Manager Actions**")
+        for item in recommendations["manager_actions"]:
+            st.write(f"- {item}")
+    with col2:
+        st.markdown("**Employee Support**")
+        for item in recommendations["employee_support_actions"]:
+            st.write(f"- {item}")
+    with col3:
+        st.markdown("**Watch Items**")
+        for item in recommendations["watch_items"]:
+            st.write(f"- {item}")
+
+
+def draw_employee_profile():
+    employee_id = st.session_state.selected_employee_id
+    employee = data.get_employee(employee_id)
+
+    if not employee:
+        st.error("Employee not found.")
+        return
+
+    if st.button("Back to Directory"):
+        st.session_state.selected_employee_id = None
+        st.rerun()
+
+    st.title(f"Employee Profile: {employee['employee_id']}")
+    st.caption(f"{employee['team']} | {employee['job_role']}")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Years at Company", employee["years_at_company"])
+    c2.metric("Work-Life Balance", employee["work_life_balance"])
+    c3.metric("Job Satisfaction", employee["job_satisfaction"])
+    c4.metric("Performance Rating", employee["performance_rating"])
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Promotions", employee["number_of_promotions"])
+    c6.metric("Overtime Flag", employee["overtime_flag"])
+    c7.metric("Recognition", employee["employee_recognition"])
+    c8.metric("Attrition", employee["attrition"])
 
     st.divider()
+    st.subheader("Current Risk")
 
-    st.write("### Burnout Risk Assessment")
+    latest_score = st.session_state.latest_score_overrides.get(employee_id)
+    if latest_score is None:
+        latest_score = data.get_latest_score(employee_id)
 
-    # Large formatted risk score
-    score_color = "red" if emp_details['Status'] in ["High", "Critical"] else (
-        "orange" if emp_details['Status'] == "Moderate" else "green")
-    st.markdown(
-        f"**Risk Score:** <span style='color:{score_color}; font-size:1.5rem; font-weight:bold;'>{emp_details['Current Ember']} / 100</span>",
-        unsafe_allow_html=True)
+    score_col1, score_col2 = st.columns([1, 2])
+    with score_col1:
+        if st.button("Run Current Score", key=f"score_button_{employee_id}"):
+            with st.spinner("Generating current burnout score..."):
+                result = data.generate_score(employee_id)
+            if result:
+                st.session_state.latest_score_overrides[employee_id] = result
+                remember_scored_employee(employee_id)
+                latest_score = result
 
-    st.info("AI Assessment Summary:")
-    st.write(emp_details['Summary'])
+    with score_col2:
+        if latest_score:
+            color = score_color(latest_score.get("risk_level"))
+            st.markdown(
+                f"<span style='color:{color}; font-size:1.4rem; font-weight:700;'>{latest_score['risk_level'].title()} | {int(latest_score['risk_score'])} / 100</span>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning("Not scored")
 
-    # Display key factors if available
-    if isinstance(emp_details['Key Factors'], list) and len(emp_details['Key Factors']) > 0:
-        st.write("**Key Contributing Factors:**")
-        for factor in emp_details['Key Factors']:
+    if latest_score:
+        st.markdown(f"**Summary:** {latest_score['summary']}")
+        st.markdown("**Key Factors**")
+        for factor in latest_score.get("key_factors", []):
             st.write(f"- {factor}")
 
-
-### DRAW PAGES END ###
-
-### MAIN DRAW ###
-
-# --- SIDEBAR ---
-with st.sidebar:
-    st.title("Navigation")
-
-    st.button("📊 Dashboard", use_container_width=True,
-              type="primary" if st.session_state.current_page == "Dashboard" else "secondary",
-              on_click=navigate_to, args=("Dashboard",))
-
-    st.button("🏢 Teams", use_container_width=True,
-              type="primary" if st.session_state.current_page == "Teams" else "secondary",
-              on_click=navigate_to, args=("Teams",))
-
-    st.button("🧑‍💻 Employees", use_container_width=True,
-              type="primary" if st.session_state.current_page == "Employees" else "secondary",
-              on_click=navigate_to, args=("Employees",))
+    st.divider()
+    draw_forecast_section(employee_id)
 
     st.divider()
-    st.caption(f"Data synced through: {today.strftime('%b %d, %Y')}")
+    draw_recommendations_section(employee_id)
 
-# --- PAGE ROUTER ---
-if st.session_state.current_page == "Dashboard":
-    draw_dashboard_page()
 
-elif st.session_state.current_page == "Teams":
-    if st.session_state.selected_team is None:
-        draw_team_overview()
+def draw_employees_page():
+    if st.session_state.selected_employee_id is None:
+        draw_employee_directory()
     else:
-        draw_main_team_page()
+        draw_employee_profile()
 
-elif st.session_state.current_page == "Employees":
-    if st.session_state.selected_employee is None:
-        draw_employees_overview()
+
+def main():
+    init_state()
+    draw_sidebar()
+
+    if st.session_state.current_page == "Dashboard":
+        draw_dashboard()
+    elif st.session_state.current_page == "Teams":
+        draw_team_page()
     else:
-        draw_employee_view()
+        draw_employees_page()
 
-### MAIN DRAW END ###
+
+main()

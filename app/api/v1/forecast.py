@@ -10,7 +10,6 @@ from app.core.database import get_db
 from app.models.prediction import Prediction
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.llm_service import LLMService
-from app.repositories.metric_repository import MetricRepository
 from app.repositories.prediction_repository import PredictionRepository
 
 from llm.schemas import BurnoutForecastResult
@@ -42,15 +41,7 @@ def forecast_employee(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    metric = MetricRepository.get_latest_employee_metrics(db, id)
-
-    if not metric:
-        raise HTTPException(status_code=404, detail="Metrics not found")
-
-    employee_metrics = LLMService.build_employee_metrics(
-        employee,
-        metric,
-    )
+    employee_metrics = LLMService.build_employee_metrics(employee)
 
     result = LLMService.forecast(
         employee_metrics,

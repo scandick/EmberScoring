@@ -8,6 +8,7 @@ from app.api.v1.score import router as score_router
 from app.core.database import Base
 from app.core.database import engine
 from app.models.employee import Employee  # noqa: F401
+from app.models.employee_score import EmployeeScore  # noqa: F401
 from app.models.metric import Metric  # noqa: F401
 from app.models.prediction import Prediction  # noqa: F401
 from app.models.team import Team  # noqa: F401

@@ -18,13 +18,18 @@ class EmployeeRepository:
         db: Session,
         skip: int = 0,
         limit: int = 100,
+        team: str | None = None,
+        job_role: str | None = None,
     ):
-        return (
-            db.query(Employee)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        query = db.query(Employee)
+
+        if team:
+            query = query.filter(Employee.team == team)
+
+        if job_role:
+            query = query.filter(Employee.job_role == job_role)
+
+        return query.offset(skip).limit(limit).all()
 
     @staticmethod
     def get_team_employees(
@@ -32,11 +37,11 @@ class EmployeeRepository:
         team: str,
         skip: int = 0,
         limit: int = 100,
+        job_role: str | None = None,
     ):
-        return (
-            db.query(Employee)
-            .filter(Employee.team == team)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        query = db.query(Employee).filter(Employee.team == team)
+
+        if job_role:
+            query = query.filter(Employee.job_role == job_role)
+
+        return query.offset(skip).limit(limit).all()

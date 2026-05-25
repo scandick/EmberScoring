@@ -10,7 +10,6 @@ from llm.schemas import EmployeeMetrics
 from llm.schemas import RecommendationResult
 
 from app.models.employee import Employee
-from app.models.metric import Metric
 
 
 class LLMService:
@@ -42,11 +41,7 @@ class LLMService:
         return LLMService.JOB_ROLE_TO_TEAM.get(job_role, "General")
 
     @staticmethod
-    def build_employee_metrics(
-        employee: Employee,
-        metric: Metric,
-    ) -> EmployeeMetrics:
-
+    def build_employee_metrics(employee: Employee) -> EmployeeMetrics:
         return EmployeeMetrics(
             employee_id=str(employee.id),
             team=LLMService._resolve_team(employee),
@@ -56,9 +51,7 @@ class LLMService:
             job_satisfaction=getattr(employee, "job_satisfaction", "Unknown"),
             performance_rating=getattr(employee, "performance_rating", "Unknown"),
             number_of_promotions=max(getattr(employee, "number_of_promotions", 0), 0),
-            overtime_flag=LLMService._string_flag_from_bool_like(
-                getattr(employee, "overtime_flag", metric.overtime_hours > 0)
-            ),
+            overtime_flag=LLMService._string_flag_from_bool_like(getattr(employee, "overtime_flag", False)),
             employee_recognition=getattr(employee, "employee_recognition", "Unknown"),
             leadership_opportunities=LLMService._string_flag_from_bool_like(
                 getattr(employee, "leadership_opportunities", False)
