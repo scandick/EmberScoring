@@ -199,6 +199,22 @@ def draw_dashboard():
 
     st.write("")
 
+    alert_col1, alert_col2 = st.columns(2)
+    with alert_col1:
+        if stats["at_risk_employees"] > 0:
+            st.error(
+                f"AI risk cache already contains {stats['at_risk_employees']} employees marked as High or Critical."
+            )
+        else:
+            st.info("No saved high-risk employees yet. Run scoring from Employee Profile to populate risk data.")
+    with alert_col2:
+        if stats["scored_employees"] > 0:
+            st.success(
+                f"{stats['scored_employees']} employee profiles already have saved burnout scoring results."
+            )
+        else:
+            st.warning("Scoring cache is empty. Start from an employee profile and run current score.")
+
     teams_df = pd.DataFrame(teams)
     if teams_df.empty:
         st.info("No team data available.")
@@ -280,6 +296,42 @@ def draw_team_page():
         s5.metric("Avg Meeting Load", f"{summary.get('avg_meeting_load', 0):.1f} hrs")
 
     st.write("")
+    chart_col, table_col = st.columns([1.15, 1])
+
+    with chart_col:
+        metrics_df = pd.DataFrame(
+            [
+                {"Metric": "Overtime", "Value": summary.get("avg_overtime_hours", 0), "Unit": "hrs"},
+                {"Metric": "Sick Leave", "Value": summary.get("avg_sick_leave_days", 0), "Unit": "days"},
+                {"Metric": "Vacation Gap", "Value": summary.get("avg_vacation_gap_days", 0), "Unit": "days"},
+                {"Metric": "Night Activity", "Value": summary.get("avg_night_activity_pct", 0), "Unit": "%"},
+                {"Metric": "Meeting Load", "Value": summary.get("avg_meeting_load", 0), "Unit": "hrs"},
+            ]
+        )
+        metrics_chart = (
+            alt.Chart(metrics_df)
+            .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+            .encode(
+                x=alt.X("Metric:N", sort=None),
+                y=alt.Y("Value:Q"),
+                tooltip=["Metric", "Value", "Unit"],
+                color=alt.value("#00acc1"),
+            )
+            .properties(height=260, title="Derived Team Metrics")
+        )
+        st.altair_chart(metrics_chart, use_container_width=True)
+
+    with table_col:
+        st.subheader("Scoring Status")
+        scoring_status_df = pd.DataFrame(
+            [
+                {"Signal": "Employees", "Value": selected_team_meta["employee_count"]},
+                {"Signal": "Scored Employees", "Value": team_scores["scored_employees"]},
+                {"Signal": "Employees At Risk", "Value": team_scores["at_risk_employees"]},
+            ]
+        )
+        st.dataframe(scoring_status_df, hide_index=True, use_container_width=True)
+
     st.subheader("Team Members")
     st.text_input(
         "Filter by job role",
@@ -481,6 +533,7 @@ def draw_employee_profile():
     st.title(f"Employee Profile: {employee['employee_id']}")
     st.caption(f"{employee['team']} | {employee['job_role']}")
 
+    st.subheader("Employee Profile")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Years at Company", employee["years_at_company"])
     c2.metric("Work-Life Balance", employee["work_life_balance"])
